@@ -1,0 +1,74 @@
+version: "3.7"
+
+services:
+  postgresql:
+    container_name: postgresql
+    build:
+      dockerfile: .docker/postgres/Dockerfile
+      context: ./
+    environment:
+      POSTGRES_USER: ${DB_USER:?provide db user to .env}
+      POSTGRES_PASSWORD: ${DB_PWD:?provide db password to .env}
+    volumes:
+      - type: bind
+        source: ./.docker-data/db
+        target: /var/lib/postgresql/data
+    networks:
+      - video
+    expose:
+      - 5432
+    logging:
+      driver: none
+
+  temporal:
+    container_name: temporal
+    image: temporalio/auto-setup:1.20.3
+    environment:
+      - DB=${DB_HOST:?provide db host to .env}
+      - DB_PORT=${DB_PORT:?provide db port to .env}
+      - POSTGRES_USER=${DB_USER:?provide db user to .env}
+      - POSTGRES_PWD=${DB_PWD:?provide db password to .env}
+      - POSTGRES_SEEDS=postgresql
+      - DYNAMIC_CONFIG_FILE_PATH=config/dynamicconfig/development-sql.yaml
+    networks:
+      - video
+    volumes:
+      - ./.docker/temporalio/dynamicconfig:/etc/temporal/config/dynamicconfig
+    depends_on:
+      - postgresql
+    logging:
+      driver: none
+
+  temporal-admin-tools:
+    container_name: temporal-admin-tools
+    depends_on:
+      - temporal
+    environment:
+      TEMPORAL_CLI_ADDRESS: ${TEMPORAL_ADDRESS:?provide temporal address to .env}
+    image: temporalio/admin-tools:1.20.3
+    networks:
+      - video
+    stdin_open: true
+    tty: true
+    logging:
+      driver: none
+
+  temporal-ui:
+    container_name: temporal-ui
+    image: temporalio/ui:2.15.0
+    environment:
+      TEMPORAL_ADDRESS: ${TEMPORAL_ADDRESS:?provide temporal address to .env}
+      TEMPORAL_CORS_ORIGINS: http://localhost:3000
+    networks:
+      - video
+    depends_on:
+      - temporal
+    logging:
+      driver: none
+
+networks:
+  video:
+    ipam:
+      driver: default
+      config:
+        - subnet: 172.0.94.0/24
